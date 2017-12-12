@@ -1,0 +1,199 @@
+---
+title: "Assignment 5 - Meta-analysis of pitch in schizophrenia"
+author: "Riccardo Fusaroli"
+date: "3/7/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/Experimental Methods III/Assignment_5")
+library(tidyverse)
+library(pastecs)
+install.packages("metafor")
+library(metafor)
+library(lme4)
+library(dplyr)
+
+
+#We are not sure that all the studies are tapping in the same population
+#model = lmer(es~1+(1|study), weights = 1/variance)
+
+#How to find mean ES and SD 
+#From the distributions of means
+#The effec size (ES) is the difference between the two mean distributions
+#We need to extract standardized betas (Cohen's d) - we want to calculate this of the difference for each study 
+#how do we calculate cohens'd: C's D = (mean(1. distribution)-mean(2. distribution))/pooled SD
+
+
+
+
+```
+
+# Building on the shoulders of giants: meta-analysis
+
+## Questions to be answered
+
+1. What is the current evidence for distinctive patterns of pitch mean and pitch sd in schizophrenia? Report how many papers report quantitative estimates, your method to analyze them, the estimated effect size of the difference (mean effect size and standard error for pitch mean, same for pitch sd) and forest plots representing it. 
+```{r}
+data = read.csv("~/Documents/Experimental Methods III/Assignment_5/Data.csv", sep=";")
+
+#Calculate effect size from two distributions of means - one from control and one from schizo group
+ES_mean = escalc("SMD", n1i=SampleSizeContros, n2i=SampleSizeSchizo, m1i =
+              PitchMeanControls, m2i=PitchMeanSchizo, sd1i =
+              PitchMeanControlsSD, sd2i = PitchMeanSchizoSD, data=data)
+
+ES_sd = escalc("SMD", n1i=SampleSizeContros, n2i=SampleSizeSchizo, m1i =
+              PitchSDControls, m2i=PitchSDSchizo, sd1i =
+              PitchSDControlsSD, sd2i = PitchSDSchizoSD, data=data)
+
+#Use LMER to make a model of ES across all studies, taking into acount that studies with more participants, should weigh more (weights = 1/vi) - the theory is that the bigger the sample size, the smaller the variance - and uncertainty about if all studies are tapping into the same population (random effect of study/Article)
+model_mean = lmer(yi ~ 1 + (1|Article), weights = 1/vi, data=ES_mean,
+             control=lmerControl(check.nobs.vs.nlev="ignore",
+                                 check.nobs.vs.nRE="ignore"))
+
+summary(model_mean)
+
+
+model_sd = lmer(yi ~ 1 + (1|Article), weights = 1/vi, data=ES_sd,
+             control=lmerControl(check.nobs.vs.nlev="ignore",
+                                 check.nobs.vs.nRE="ignore"))
+
+summary(model_sd)
+
+#Build a forest plot of the results (forest(model))
+res_mean = rma(yi, vi, data=ES_mean, slab = Article) 
+summary(res_mean)
+
+res_sd = rma(yi, vi, data=ES_sd, slab = Article) 
+summary(res_sd)
+
+#forest_plot = forest(model1)
+forest(res_mean)
+forest(res_sd)
+
+
+```
+2. Do the results match your own analysis from Assignment 3? If you add your results to the meta-analysis, do the estimated effect sizes change? Report the new estimates and the new forest plots.
+```{r}
+#Extract the mean and SD from the model from assignment 3 
+#Run the analysis again
+ass3_data = read.csv("~/Documents/Experimental Methods III/Assignment_3/emergency_data.csv")
+
+newdata = ass3_data %>% 
+  group_by(diagnosis) %>% 
+  dplyr::summarise(Mean=mean(mean), std = mean(stdDev), Mean_sd = sd(mean),
+                   sd_sd = sd(stdDev))
+#Below values are obtained from "newdata" df
+PitchMeanControls = 135.0317
+PitchMeanSchizo = 149.0790
+
+PitchMeanControlsSD = 25.61366
+PitchMeanSchizoSD = 24.02952
+
+PitchSDControls = 47.79870
+PitchSDControlsSD = 17.90346
+
+PitchSDSchizo = 57.83132
+PitchSDSchizoSD = 36.78883
+
+#Get sample sizes 
+control = subset(ass3_data, ass3_data$diagnosis=="control")
+SampleSizeContros = length(unique(control$participant))
+
+schizo = subset(ass3_data, ass3_data$diagnosis=="schizophrenia")
+SampleSizeSchizo = length(unique(schizo$participant))
+
+Article = "myStudy"
+Year = "2017"
+
+#Combine in new df, containing only values from my study
+my_study = data.frame(Article, Year, SampleSizeContros, SampleSizeSchizo, PitchMeanControls, PitchMeanControlsSD, PitchMeanSchizo,PitchMeanSchizoSD, PitchSDControls, PitchSDControlsSD, PitchSDSchizo, PitchSDSchizoSD )
+
+#Calculate effect size for my data for both mean and SD and store in new df
+ES_mean2 = escalc("SMD", n1i=SampleSizeContros, n2i=SampleSizeSchizo, m1i =
+              PitchMeanControls, m2i=PitchMeanSchizo, sd1i =
+              PitchMeanControlsSD, sd2i = PitchMeanSchizoSD, data=my_study)
+
+ES_sd2 = escalc("SMD", n1i=SampleSizeContros, n2i=SampleSizeSchizo, m1i =
+              PitchSDControls, m2i=PitchSDSchizo, sd1i =
+              PitchSDControlsSD, sd2i = PitchSDSchizoSD, data=my_study)
+
+final_mean = rbind(ES_mean, ES_mean2)
+final_sd = rbind(ES_sd, ES_sd2)
+
+
+#Run the model on all the data gathered(incuding your own) - see if it changes from the first model
+model_mean2 = lmer(yi ~ 1 + (1|Article), weights = 1/vi, data=final_mean,
+             control=lmerControl(check.nobs.vs.nlev="ignore",
+                                 check.nobs.vs.nRE="ignore"))
+summary(model_mean2)
+
+
+model_sd2 = lmer(yi ~ 1 + (1|Article), weights = 1/vi, data=final_sd,
+             control=lmerControl(check.nobs.vs.nlev="ignore",
+                                 check.nobs.vs.nRE="ignore"))
+summary(model_sd2)
+
+#Build a forest plot of the results (forest(model))
+res_mean2 = rma(yi, vi, data=final_mean, slab = Article) 
+res_sd2 = rma(yi, vi, data=final_sd, slab=Article)
+
+forest(res_mean2)
+forest(res_sd2)
+```
+3. Assess the quality of the literature: report and comment on heterogeneity of the studies (tau, I2), on publication bias (funnel plot), and on influential studies.
+```{r}
+#Tau2 = how much variance there is between studies (how diverse are the studies)
+#I2 = the percentage of tau2, that could not be explained by the sampling variability - uncertainty (thus, not tap into the same populations)
+
+summary(res_mean2) # - Data with my own study
+#Report of model2 of mean: 
+#The overall estimated difference (Cohen’s d) in pitch mean between the ASD and the comparison groups was -0.242, SE = 0.173, p=0.162. 
+#Report heterogeneity of the studies: 
+#Tau2 = 0.081, SE = 0.1050
+#Tau = 0.285
+#I2 = 56.28%
+
+summary(res_sd2) #- Data with my own study
+#Report of model2 of SD: 
+#The overall estimated difference (Cohen’s d) in pitch variability between the ASD and the comparison groups was -0.348, SE = 0.713, p=0.625. 
+#Report heterogeneity of the studies: 
+#Tau2 = 3.472, SE = 2.052
+#Tau = 1.863
+#I2 = 98.07%
+
+#Check publication bias 
+#Plotting effect size against standard error 
+#That is, we check whether the larger the effect size the more unreliable the estimate (otherwise said, whether only bad studies have good results)
+funnel(res_mean2, main = "Random-Effects Model",xlab = "Standardized Mean Difference") 
+funnel(res_sd2, main = "Random-Effects Model",xlab = "Standardized Mean Difference") 
+
+ranktest(res_mean2)
+ranktest(res_sd2)
+
+#Testing for influential studies 
+inf_mean2 = influence(res_mean2) 
+print(inf_mean2)
+plot(inf_mean2) 
+#Study 10 is drawing the mean down - Martinez et al.2015
+
+inf_sd2 = influence(res_sd2) 
+print(inf_sd2)
+plot(inf_sd2) 
+#Study 9 is drawing the sd down - Cohen et al. 2014
+
+```
+
+## Tips on the process to follow:
+
+- Download the data on all published articles analyzing pitch in schizophrenia: https://www.dropbox.com/s/pmgw8wzc308so1p/Data.csv?dl=0
+- Following the procedure in the slides calculate effect size and standard error of the effect size per each study. N.B. we focus on pitch mean and pitch standard deviation.
+ . first try using lmer (to connect to what you know of mixed effects models)
+ . then use rma() (to get some juicy additional statistics)
+
+- Build a forest plot of the results (forest(model))
+ 
+- Go back to Assignment 3, add your own study to the data table, and re-run meta-analysis. Do the results change?
+
+- Now look at the output of rma() and check tau and I2
